@@ -117,9 +117,46 @@ elif choice == "Savings Ledger":
             st.success("Saving recorded successfully.")
 
 elif choice == "Loan System":
-    # (Existing Loan logic for Issuance and Repayment remains here)
     st.header("🏦 Loan Management")
-    st.info("Use the sidebar to navigate to the Loan Calculator for simulations.")
+    tab1, tab2, tab3 = st.tabs(["Issue Loan", "Record Repayment", "Loan Register"])
+    
+    with tab1:
+        m_list = pd.read_sql("SELECT member_no, name FROM members", conn)
+        with st.form("loan_issue"):
+            m_id = st.selectbox("Select Member", m_list['member_no'] + " - " + m_list['name'])
+            amt = st.number_input("Principal Amount", min_value=1000)
+            if st.form_submit_button("Approve & Issue"):
+                m_no = m_id.split(" - ")[0]
+                c.execute("INSERT INTO loans (member_id, amount, interest_rate, duration, status, date_issued) VALUES (?,?,?,?,?,?)",
+                          (m_no, amt, 3.5, 4, "Active", datetime.now().date()))
+                conn.commit()
+                st.success(f"Loan Issued to {m_no}")
+
+    with tab2:
+        # Fetch only active loans to repay
+        active_loans = pd.read_sql("SELECT l.loan_id, l.member_id, m.name FROM loans l JOIN members m ON l.member_id = m.member_no WHERE l.status='Active'", conn)
+        if not active_loans.empty:
+            with st.form("repay_form"):
+                selection = st.selectbox("Select Loan Account", active_loans['loan_id'].astype(str) + " - " + active_loans['name'])
+                l_id = selection.split(" - ")[0]
+                p_amt = st.number_input("Total Amount Paid (UGX)")
+                # Rule: 3.5% Interest Calculation for the user to confirm
+                int_suggested = p_amt * 0.035 
+                int_port = st.number_input("Interest Portion", value=int_suggested)
+                
+                if st.form_submit_button("Save Repayment"):
+                    pri_port = p_amt - int_port
+                    c.execute("INSERT INTO repayments (loan_id, date, total_paid, interest_portion, principal_portion) VALUES (?,?,?,?,?)",
+                              (l_id, datetime.now().date(), p_amt, int_port, pri_port))
+                    conn.commit()
+                    st.success("Payment recorded against Principal and Interest.")
+        else:
+            st.write("No active loans found.")
+
+    with tab3:
+        st.subheader("All Issued Loans")
+        all_loans = pd.read_sql("SELECT * FROM loans", conn)
+        st.dataframe(all_loans, use_container_width=True)
 
 elif choice == "Loan Calculator":
     st.header("🧮 Loan Simulation (3.5% Reducing Balance)")
